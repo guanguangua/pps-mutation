@@ -12,6 +12,7 @@ import java.util.Set;
 
 import javafx.util.Pair;
 
+
 public class Player extends mutation.sim.Player {
     private Random random;
 
@@ -40,33 +41,49 @@ public class Player extends mutation.sim.Player {
                 "actactactaactactactaagtagtagtaagtagtagtaagtagtagtaagtagtagtaagtagtagtaagtagtagtacgtcgtcgtccgtcgtcgtc";
     }
 
-    private ArrayList<Pair<Integer, Integer>> getPossibleWindows(String beforeMutation, String afterMutation, int m) {
+    public Integer getWrappedIdx(int idx, int n) {
+        if(idx < 0) {
+            return n + idx;
+        } else if(idx >= n) {
+            return idx - n;
+        } else {
+            return idx;
+        }
+    }
+
+    private ArrayList<ArrayList<Integer>> getPossibleWindows(String beforeMutation, String afterMutation, int m) {
         int n = beforeMutation.length();
-        ArrayList<Integer> differenceLocation = new ArrayList<>();
+        ArrayList<ArrayList<Integer>>possibleWindows = new ArrayList<>();
+
+        int startIdx = 9999999;
+        int endIdx = -9999999;
+        Set<Integer>accountedFor = new HashSet<>();
         for (int i = 0; i < n; ++i) {
-            if (beforeMutation.charAt(i) != afterMutation.charAt(i))
-                differenceLocation.add(i);
-        }
-        ArrayList<Pair<Integer, Integer>> result = new ArrayList<>();
-        int prev = differenceLocation.get(0);
-        for (int i = 0; i < differenceLocation.size(); ++i) {
-            if (i == differenceLocation.size() - 1) {
-                if (differenceLocation.get(i) - prev <= 10)
-                    result.add(new Pair<>(prev, Math.min(prev + 10, 999)));
-                else {
-                    int curr = differenceLocation.get(i);
-                    result.add(new Pair<>(prev, Math.min(prev + 10, 999)));
-                    result.add(new Pair<>(curr, Math.min(curr + 10, 999)));
+            if (beforeMutation.charAt(i) != afterMutation.charAt(i) && ! accountedFor.contains(i)) {
+                accountedFor.add(i);
+                startIdx = Math.min(startIdx, i);
+                endIdx = Math.max(endIdx, i);
+                for(int windowIdx = i - 9; windowIdx <= i + 9; windowIdx++) {
+                    int wrappedIdx = getWrappedIdx(windowIdx, n);
+                    if (beforeMutation.charAt(wrappedIdx) != afterMutation.charAt(wrappedIdx)) {
+                        accountedFor.add(wrappedIdx);
+                        startIdx = Math.min(startIdx, windowIdx);
+                        endIdx = Math.max(endIdx, windowIdx);
+                    }
                 }
+
+                ArrayList<Integer>newW = new ArrayList<>();
+                for(int windowStart = endIdx - 9; windowStart <= startIdx; windowStart++) {
+                    newW.add(this.getWrappedIdx(windowStart, n));
+                }
+                possibleWindows.add(newW);
+                startIdx = 9999999;
+                endIdx = -9999999;
             }
-            else if (differenceLocation.get(i) - prev <= 10)
-                continue;
-            else {
-                result.add(new Pair<>(prev, Math.min(prev + 10, 999)));
-                prev = differenceLocation.get(i);
-            }
+
         }
-        return result;
+
+        return possibleWindows;
     }
 
     private ArrayList<String> getPossiblePattern(String windowStr){
@@ -121,91 +138,150 @@ public class Player extends mutation.sim.Player {
         String afterMutationSub = afterMutation.substring(0, lastChangeIdx + 1);
         return getPossibleActions2(beforeMutationSub, afterMutationSub, 0);
     }
-    
-    /**
-     * Returns a boolean if the pattern:action pair matches a possible mutation
-     * Assumption: One substitution mutation per window
-     * 
-     * @param pattern: Pattern to search in window
-     * @param action: Action to perform if pattern is found
-     * @param window: Original window
-     * @param mutatedWindow: Window with isolated mutation
-     * @return true if pattern:action pair matches the mutated window
-     */
-    private boolean explain(String pattern, String action, String window, String mutatedWindow) {
-    	char[] actionArr = action.toCharArray();
-    	char[] windowArr = window.toCharArray();
-    	
-    	// Search for pattern in window
-    	int index = window.indexOf(pattern);
-    	while(index >= 0) {
-    		
-    		// For every occurrence of the pattern try the mutation
-    		char[] windowArrTemp = windowArr.clone();
-    		for(int i = 0; i < actionArr.length; i ++) {
-    			if(index + i < windowArrTemp.length) {
-    				windowArrTemp[index + i] = actionArr[i];
-    			}
-    		}
-    		
-    		// Check of mutation at a location matches the mutated window
-    		String mutatedTemp = new String(windowArrTemp);
-    		if(mutatedTemp.equals(mutatedWindow)) {
-    			// Match Found
-    			return true;
-    		}
-    		
-    		// Find next pattern in window, starting from next index after the occurrence of the last pattern
-    		index = window.indexOf(pattern, index + 1);
-    	}
-    	// No matches found
-    	return false;
+
+    public String getWrappedSubstring(int s, int e, String string) {
+        if(s < 0) {
+            int realStart = getWrappedIdx(s, string.length());
+            return string.substring(realStart) + string.substring(0, e);
+        } else if (e >= string.length()) {
+            int realEnd = getWrappedIdx(e, string.length());
+            return string.substring(s) + string.substring(0, realEnd);
+        } else {
+            return string.substring(s, e);
+        }
+    }
+
+    public String getAction(String beforeMutation, String afterMutation) {
+        int lastChangeIdx = -1;
+        for(int i = 0; i < afterMutation.length(); i++) {
+            if(beforeMutation.charAt(i) != afterMutation.charAt(i)) {
+                lastChangeIdx = i;
+            }
+        }
+
+        String action = afterMutation.substring(0, lastChangeIdx + 1);
+        return action;
+    }
+
+    public mutation.g1.MyTree buildTree(String beforeMutation, String afterMutation) {
+        String action = this.getAction(beforeMutation, afterMutation);
+
+        ArrayList<String> patternConstraint = new ArrayList<>();
+        for(int j = 0; j < beforeMutation.length(); j++) {
+            patternConstraint.add(Character.toString(beforeMutation.charAt(j)));
+        }
+
+        mutation.g1.MyTree tree = new mutation.g1.MyTree(patternConstraint);
+        tree.action = action;
+        return tree;
     }
 
     @Override
     public Mutagen Play(Console console, int m) {
-        Mutagen result = new Mutagen();
-        //result.add("a;c;c", "att");
-        //result.add("g;c;c", "gtt");
+        ArrayList<mutation.g1.MyTree>trees = new ArrayList<>();
 
-        Set<String>addedRules = new HashSet<>();
+        boolean isCorrect;
+        Mutagen mutation = new Mutagen();
 
-        ArrayList<Pair<String, String>> candidateRules = new ArrayList<>();
-        for (int i = 0; i < 10; ++ i) {
-            String genome = defaultString();
+        for (int i = 0; i < 25; ++ i) {
+            String genome = randomString();
             String mutated = console.Mutate(genome);
+            int initialIdx = 0;
 
-            ArrayList<Pair<Integer, Integer>> possibleWindows = this.getPossibleWindows(genome, mutated, m);
-            for(Pair <Integer, Integer> p : possibleWindows) {
-                String beforeMutation = genome.substring(p.getKey(), p.getValue());
-                String afterMutation = mutated.substring(p.getKey(), p.getValue());
-                
-                ArrayList<String> possiblePatterns = this.getPossiblePattern(beforeMutation);
-                ArrayList<String> possibleActions = this.getPossibleActions(beforeMutation, afterMutation);
+            ArrayList<ArrayList<Integer>> possibleWindows = this.getPossibleWindows(genome, mutated, m);
 
-                for(String patternString : possiblePatterns) {
-                    for (String actionString : possibleActions) {
-                        String ruleString = patternString + "=" + actionString;
-                        
-                        // If pattern is longer than action then continue. This case was not seen in the class
-                        if(patternString.length() > actionString.length()) {
-                        	continue;
-                        }
-                        
-                        if(! addedRules.contains(ruleString)) {
-                            candidateRules.add(new Pair(patternString, actionString));
-                            addedRules.add(ruleString);
-                        }
-                        
-                        // If pattern:action pair is possible add it to results
-                        if(explain(patternString, actionString, beforeMutation, afterMutation)) {
-                        	result.add(patternString, actionString);
+            if(possibleWindows.size() == 0) {
+                System.out.println("No mutations possible.");
+                continue;
+            }
+
+            if(i == 0 || trees.size() == 0) {
+                initialIdx = 1;
+                ArrayList<Integer> firstWindows = possibleWindows.get(0);
+                for(int startIdx : firstWindows) {
+                    String beforeString = getWrappedSubstring(startIdx, startIdx + 10, genome);
+                    String afterString = getWrappedSubstring(startIdx, startIdx + 10, mutated);
+                    trees.add(this.buildTree(beforeString, afterString));
+                }
+            }
+
+            for(int j = initialIdx; j < possibleWindows.size(); j ++) {
+                boolean [] supportedTrees = new boolean[trees.size()];
+                ArrayList<String>candidateActions = new ArrayList<>();
+                ArrayList<String>candidatePatterns = new ArrayList<>();
+                ArrayList<mutation.g1.MyTree>prunedTrees = new ArrayList<>();
+
+                ArrayList<Integer> otherWindows = possibleWindows.get(j);
+                for(int startIdx : otherWindows) {
+                    String beforeString = getWrappedSubstring(startIdx, startIdx + 10, genome);
+                    String afterString = getWrappedSubstring(startIdx, startIdx + 10, mutated);
+                    String action = this.getAction(beforeString, afterString);
+                    candidateActions.add(action);
+                    candidatePatterns.add(beforeString);
+                    for(int z = 0; z < trees.size(); z++) {
+                        if(action.equals(trees.get(z).action)) {
+                            supportedTrees[z] = true;
+                            trees.get(z).prune(beforeString);
                         }
                     }
                 }
+
+                for(int y = 0; y < supportedTrees.length; y++) {
+                    if(supportedTrees[y]) {
+                        prunedTrees.add(trees.get(y));
+                    }
+                }
+
+                if(prunedTrees.size() == 0) {
+                    for(int z = 0; z < candidateActions.size(); z++) {
+                        String candidateAction = candidateActions.get(z);
+                        String candidatePattern = candidatePatterns.get(z);
+                        for(int p = 0; p < trees.size(); p++) {
+                            String ta = trees.get(p).action;
+                            if(candidateAction.contains(ta) || ta.contains(candidateAction)) {
+                                trees.get(p).prune(candidatePattern);
+                                String longerAction = ta.length() > candidateAction.length() ? ta : candidateAction;
+                                trees.get(p).action = longerAction;
+                                prunedTrees.add(trees.get(p));
+                            }
+                        }
+                    }
+                }
+                // We have to guess if pruned went to 0
+                if(prunedTrees.size() > 0) {
+                    trees = prunedTrees;
+                } else {
+                    System.out.println("Couldn't find any matching trees.  Can't filter any of them.");
+                }
             }
-            console.Guess(result);
+
+            String bestPattern = "";
+            double bestScore = 0.0;
+            String bestAction = "";
+            for(mutation.g1.MyTree tree : trees) {
+                Pair<String, Double> candidate  = tree.computeBestPattern();
+                String candidatePattern = candidate.getKey();
+                double candidateScore = candidate.getValue();
+
+                if(candidateScore >= bestScore) {
+                    bestScore = candidateScore;
+                    bestPattern = candidatePattern;
+                    bestAction = tree.action;
+                }
+            }
+
+            mutation = new Mutagen();
+            mutation.add(bestPattern, bestAction);
+            isCorrect = console.Guess(mutation);
+            System.out.println("Mutation -->" + bestPattern + "@" + bestAction);
+            if(isCorrect) {
+                System.out.println("Congrats: correct!");
+                break;
+            } else {
+                System.out.println("Incorrect!");
+            }
         }
-        return result;
+
+        return mutation;
     }
 }
