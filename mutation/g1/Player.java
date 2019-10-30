@@ -50,7 +50,6 @@ public class Player extends mutation.sim.Player {
     private ArrayList<ArrayList<Integer>> getPossibleWindows(String beforeMutation, String afterMutation, int m) {
         int n = beforeMutation.length();
         ArrayList<ArrayList<Integer>>possibleWindows = new ArrayList<>();
-
         int startIdx = 9999999;
         int endIdx = -9999999;
         Set<Integer>accountedFor = new HashSet<>();
@@ -67,7 +66,6 @@ public class Player extends mutation.sim.Player {
                         endIdx = Math.max(endIdx, windowIdx);
                     }
                 }
-
                 ArrayList<Integer>newW = new ArrayList<>();
                 for(int windowStart = endIdx - 9; windowStart <= startIdx; windowStart++) {
                     newW.add(this.getWrappedIdx(windowStart, n));
@@ -76,63 +74,9 @@ public class Player extends mutation.sim.Player {
                 startIdx = 9999999;
                 endIdx = -9999999;
             }
-
         }
 
         return possibleWindows;
-    }
-
-    private ArrayList<String> getPossiblePattern(String windowStr){
-        ArrayList<String> pattern = new ArrayList<>();
-        for (int i = 0; i < windowStr.length(); i++){
-            for (int j = i; j < windowStr.length(); j++){
-                pattern.add(windowStr.substring(i, j+1));
-            }
-        }
-        return pattern;
-    }
-
-    private ArrayList<String> getPossibleActions2(String beforeMutation, String afterMutation, int startIdx) {
-        ArrayList<String> actions = new ArrayList<>();
-        if(beforeMutation.length() == 0) {
-            actions.add("");
-            return actions;
-        }
-
-        char after = afterMutation.charAt(0);
-
-        ArrayList<String>prefixActionStrings = new ArrayList<String>();
-        prefixActionStrings.add(Character.toString(after));
-
-        for(int j=0; j < beforeMutation.length(); j++) {
-            if(beforeMutation.charAt(j) == after) {
-                prefixActionStrings.add(Integer.toString(j + startIdx));
-            }
-        }
-
-        ArrayList<String> actionStrings = getPossibleActions2(
-                beforeMutation.substring(1), afterMutation.substring(1), startIdx + 1);
-
-        for(String prefixString : prefixActionStrings) {
-            for(String actionString : actionStrings) {
-                String fullString = prefixString + actionString;
-                actions.add(fullString);
-            }
-        }
-
-        return actions;
-    }
-
-    private ArrayList<String> getPossibleActions(String beforeMutation, String afterMutation) {
-        int lastChangeIdx = -1;
-        for(int i=0; i < beforeMutation.length(); i++) {
-            if(beforeMutation.charAt(i) != afterMutation.charAt(i)) {
-                lastChangeIdx = i;
-            }
-        }
-        String beforeMutationSub = beforeMutation.substring(0, lastChangeIdx + 1);
-        String afterMutationSub = afterMutation.substring(0, lastChangeIdx + 1);
-        return getPossibleActions2(beforeMutationSub, afterMutationSub, 0);
     }
 
     public String getWrappedSubstring(int s, int e, String string) {
@@ -159,18 +103,25 @@ public class Player extends mutation.sim.Player {
         return action;
     }
 
+    public Mutagen generateGuess(String p, String a) {
+        Mutagen m = new Mutagen();
+        m.add(p, a);
+        return m;
+    }
+
     @Override
     public Mutagen Play(Console console, int m) {
         HashMap<String,MyTree>trees = new HashMap<>();
 
         boolean isCorrect;
+        String bestPattern = "";
+        String bestAction = "";
 
-        for (int i = 0; i < 10; ++ i) {
+        for (int iter = 0; iter < 10; iter++) {
             String genome = randomString();
             String mutated = console.Mutate(genome);
 
             ArrayList<ArrayList<Integer>> possibleWindows = this.getPossibleWindows(genome, mutated, m);
-
             if(possibleWindows.size() == 0) {
                 System.out.println("No mutations possible.");
                 continue;
@@ -197,8 +148,6 @@ public class Player extends mutation.sim.Player {
             }
 
             double bestScore = -1;
-            String bestPattern = "";
-            String bestAction = "";
             for(MyTree t: trees.values()) {
                 if(t.support == maxSupport) {
                     Pair<String, Double> p = t.computBestPattern();
@@ -212,20 +161,16 @@ public class Player extends mutation.sim.Player {
                 }
             }
 
-            ArrayList<String>patternGuess = new ArrayList<>();
-            patternGuess.add(bestPattern);
-            ArrayList<String>actionGuess = new ArrayList<>();
-            actionGuess.add(bestAction);
-            Mutagen mutation = new Mutagen(patternGuess, actionGuess);
-            isCorrect = console.Guess(mutation);
+            String resultStr = bestPattern + " -> " + bestAction;
+            isCorrect = console.Guess(this.generateGuess(bestPattern, bestAction));
             if(isCorrect) {
-                System.out.println("Congrats: correct!");
+                System.out.println("Correct: " + resultStr);
                 break;
             } else {
-                System.out.println("Incorrect!");
+                System.out.println("Incorrect: " + resultStr);
             }
         }
 
-        return new Mutagen();
+        return this.generateGuess(bestPattern, bestAction);
     }
 }
