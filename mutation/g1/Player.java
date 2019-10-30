@@ -4,10 +4,8 @@ import mutation.sim.Console;
 import mutation.sim.Mutagen;
 
 import java.lang.Math;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
+
 import javafx.util.Pair;
 
 
@@ -161,30 +159,15 @@ public class Player extends mutation.sim.Player {
         return action;
     }
 
-    public mutation.g1.MyTree buildTree(String beforeMutation, String afterMutation) {
-        String action = this.getAction(beforeMutation, afterMutation);
-
-        ArrayList<String> patternConstraint = new ArrayList<>();
-        for(int j = 0; j < beforeMutation.length(); j++) {
-            patternConstraint.add(Character.toString(beforeMutation.charAt(j)));
-        }
-
-        mutation.g1.MyTree tree = new mutation.g1.MyTree(patternConstraint);
-        tree.action = action;
-        return tree;
-    }
-
     @Override
     public Mutagen Play(Console console, int m) {
-        ArrayList<mutation.g1.MyTree>trees = new ArrayList<>();
+        HashMap<String,MyTree>trees = new HashMap<>();
 
         boolean isCorrect;
-        Mutagen mutation = new Mutagen();
 
-        for (int i = 0; i < 25; ++ i) {
+        for (int i = 0; i < 10; ++ i) {
             String genome = randomString();
             String mutated = console.Mutate(genome);
-            int initialIdx = 0;
 
             ArrayList<ArrayList<Integer>> possibleWindows = this.getPossibleWindows(genome, mutated, m);
 
@@ -193,85 +176,48 @@ public class Player extends mutation.sim.Player {
                 continue;
             }
 
-            if(i == 0 || trees.size() == 0) {
-                initialIdx = 1;
-                ArrayList<Integer> firstWindows = possibleWindows.get(0);
-                for(int startIdx : firstWindows) {
-                    String beforeString = getWrappedSubstring(startIdx, startIdx + 10, genome);
-                    String afterString = getWrappedSubstring(startIdx, startIdx + 10, mutated);
-                    trees.add(this.buildTree(beforeString, afterString));
+            for(ArrayList<Integer> windowSet : possibleWindows) {
+                for(int startIdx : windowSet) {
+                    String beforeMutation = getWrappedSubstring(startIdx, startIdx + 10, genome);
+                    String afterMutation = getWrappedSubstring(startIdx, startIdx + 10, mutated);
+                    String action = this.getAction(beforeMutation, afterMutation);
+                    if(trees.containsKey(action)) {
+                        MyTree tree = trees.get(action);
+                        tree.addPattern(beforeMutation);
+                    } else {
+                        MyTree tree = new MyTree(beforeMutation, action);
+                        trees.put(action, tree);
+                    }
                 }
             }
 
-            for(int j = initialIdx; j < possibleWindows.size(); j ++) {
-                boolean [] supportedTrees = new boolean[trees.size()];
-                ArrayList<String>candidateActions = new ArrayList<>();
-                ArrayList<String>candidatePatterns = new ArrayList<>();
-                ArrayList<mutation.g1.MyTree>prunedTrees = new ArrayList<>();
-
-                ArrayList<Integer> otherWindows = possibleWindows.get(j);
-                for(int startIdx : otherWindows) {
-                    String beforeString = getWrappedSubstring(startIdx, startIdx + 10, genome);
-                    String afterString = getWrappedSubstring(startIdx, startIdx + 10, mutated);
-                    String action = this.getAction(beforeString, afterString);
-                    candidateActions.add(action);
-                    candidatePatterns.add(beforeString);
-                    for(int z = 0; z < trees.size(); z++) {
-                        if(action.equals(trees.get(z).action)) {
-                            supportedTrees[z] = true;
-                            trees.get(z).prune(beforeString);
-                        }
-                    }
-                }
-
-                for(int y = 0; y < supportedTrees.length; y++) {
-                    if(supportedTrees[y]) {
-                        prunedTrees.add(trees.get(y));
-                    }
-                }
-
-                if(prunedTrees.size() == 0) {
-                    for(int z = 0; z < candidateActions.size(); z++) {
-                        String candidateAction = candidateActions.get(z);
-                        String candidatePattern = candidatePatterns.get(z);
-                        for(int p = 0; p < trees.size(); p++) {
-                            String ta = trees.get(p).action;
-                            if(candidateAction.contains(ta) || ta.contains(candidateAction)) {
-                                trees.get(p).prune(candidatePattern);
-                                String longerAction = ta.length() > candidateAction.length() ? ta : candidateAction;
-                                trees.get(p).action = longerAction;
-                                prunedTrees.add(trees.get(p));
-                            }
-                        }
-                    }
-                }
-                // We have to guess if pruned went to 0
-                if(prunedTrees.size() > 0) {
-                    trees = prunedTrees;
-                } else {
-                    System.out.println("Couldn't find any matching trees.  Can't filter any of them.");
-                }
+            int maxSupport = 0;
+            for(MyTree t: trees.values()) {
+                maxSupport = Math.max(t.support, maxSupport);
             }
 
+            double bestScore = -1;
             String bestPattern = "";
-            double bestScore = 0.0;
             String bestAction = "";
-            for(mutation.g1.MyTree tree : trees) {
-                Pair<String, Double> candidate  = tree.computeBestPattern();
-                String candidatePattern = candidate.getKey();
-                double candidateScore = candidate.getValue();
-
-                if(candidateScore >= bestScore) {
-                    bestScore = candidateScore;
-                    bestPattern = candidatePattern;
-                    bestAction = tree.action;
+            for(MyTree t: trees.values()) {
+                if(t.support == maxSupport) {
+                    Pair<String, Double> p = t.computBestPattern();
+                    String pattern = p.getKey();
+                    double score = p.getValue();
+                    if(score >= bestScore) {
+                        bestScore = score;
+                        bestPattern = pattern;
+                        bestAction = t.action;
+                    }
                 }
             }
 
-            mutation = new Mutagen();
-            mutation.add(bestPattern, bestAction);
+            ArrayList<String>patternGuess = new ArrayList<>();
+            patternGuess.add(bestPattern);
+            ArrayList<String>actionGuess = new ArrayList<>();
+            actionGuess.add(bestAction);
+            Mutagen mutation = new Mutagen(patternGuess, actionGuess);
             isCorrect = console.Guess(mutation);
-            System.out.println("Mutation -->" + bestPattern + "@" + bestAction);
             if(isCorrect) {
                 System.out.println("Congrats: correct!");
                 break;
@@ -280,6 +226,6 @@ public class Player extends mutation.sim.Player {
             }
         }
 
-        return mutation;
+        return new Mutagen();
     }
 }
