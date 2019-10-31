@@ -4,6 +4,7 @@ import mutation.sim.Console;
 import mutation.sim.Mutagen;
 
 import java.lang.Math;
+import java.lang.reflect.Array;
 import java.util.*;
 
 import javafx.util.Pair;
@@ -116,6 +117,7 @@ public class Player extends mutation.sim.Player {
         boolean isCorrect;
         String bestPattern = "";
         String bestAction = "";
+        Set<String>incorrectGuesses = new HashSet<String>();
 
         for (int iter = 0; iter < 100; iter++) {
             String genome = randomString();
@@ -150,7 +152,7 @@ public class Player extends mutation.sim.Player {
             double bestScore = -1;
             for(MyTree t: trees.values()) {
                 if(t.support == maxSupport) {
-                    Pair<String, Double> p = t.computBestPattern();
+                    Pair<String, Double> p = t.computeBestPattern(incorrectGuesses);
                     String pattern = p.getKey();
                     double score = p.getValue();
                     if(score >= bestScore) {
@@ -161,13 +163,14 @@ public class Player extends mutation.sim.Player {
                 }
             }
 
-            String resultStr = bestPattern + " -> " + bestAction;
+            String resultStr = bestPattern + "@" + bestAction;
             isCorrect = console.Guess(this.generateGuess(bestPattern, bestAction));
             if(isCorrect) {
                 System.out.println("Correct: " + resultStr);
                 break;
             } else {
                 System.out.println("Incorrect: " + resultStr);
+                incorrectGuesses.add(resultStr);
             }
         }
 

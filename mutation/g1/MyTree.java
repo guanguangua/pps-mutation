@@ -1,7 +1,9 @@
 package mutation.g1;
 
+import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Set;
 
 import javafx.util.Pair;
 
@@ -11,9 +13,7 @@ public class MyTree {
     public final boolean useEntropy = true;
     public final int supportBeforeEntropy = 20;
     public final double lambda = 1.0;
-    public final double singleCountEntropyThreshold = 0.4;
-    public final double doubleCountEntropyThreshold = 0.6;
-    public final double tripleCountEntropyThreshold = 0.8;
+    public final double entropyThreshold = 0.8;
 
     private final ArrayList<Character> bases = new ArrayList<Character>(Arrays.asList('a', 'c', 'g', 't'));
     public String action;
@@ -55,7 +55,19 @@ public class MyTree {
         this.addPattern(pattern);
     }
 
-    public Pair<String, Double> computBestPattern() {
+    public String generatePattern(ArrayList<String>shortestPatterns, int endIdx) {
+        String pattern = "";
+        for(int i=0; i <= endIdx; i++) {
+            pattern += shortestPatterns.get(i);
+            if(i < endIdx) {
+                pattern += ";";
+            }
+        }
+
+        return pattern;
+    }
+
+    public Pair<String, Double> computeBestPattern(Set<String> missedGuesses) {
       ArrayList<String> shortestPatterns = new ArrayList<>();
 
       for(int positionIdx = 0; positionIdx < 10; positionIdx++) {
@@ -90,18 +102,7 @@ public class MyTree {
 
       int bestEntropyIdx = -1;
       for(int e = 0; e < entropies.size(); e++) {
-          int predictedCount = predictionCounts.get(e);
-          double threshold;
-          if(predictedCount == 1) {
-              threshold = singleCountEntropyThreshold;
-          } else if(predictedCount == 2) {
-              threshold = doubleCountEntropyThreshold;
-          } else if(predictedCount == 3) {
-              threshold = tripleCountEntropyThreshold;
-          } else {
-              threshold = 0.0;
-          }
-          if(entropies.get(e) <= threshold) {
+          if(entropies.get(e) <= entropyThreshold) {
               bestEntropyIdx = e;
           }
       }
@@ -121,12 +122,14 @@ public class MyTree {
           System.out.println("Using Entropy!");
       }
       int bestIdx = chooseEntropyIdx ? bestEntropyIdx : bestPrecisionIdx;
-      String bestPattern = "";
-      for(int i=0; i <= bestIdx; i++) {
-          bestPattern += shortestPatterns.get(i);
-          if(i < bestIdx) {
-              bestPattern += ";";
-          }
+      int altIdx = chooseEntropyIdx ? bestPrecisionIdx : bestEntropyIdx;
+      if(altIdx == -1) {
+          altIdx = 0;
+      }
+      String bestPattern = this.generatePattern(shortestPatterns, bestIdx);
+      String resultStr = bestPattern + "@" + this.action;
+      if(missedGuesses.contains(resultStr)) {
+          bestPattern = this.generatePattern(shortestPatterns, altIdx);
       }
 
       return new Pair(bestPattern, bestScore);
