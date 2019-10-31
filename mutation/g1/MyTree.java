@@ -10,7 +10,29 @@ public class MyTree {
     private final ArrayList<Character> bases = new ArrayList<Character>(Arrays.asList('a', 'c', 'g', 't'));
     public String action;
     public int support;
+    public final double lambda = 1.0;
     public ArrayList<ArrayList<Integer>> patternCounts;
+
+    public double log2(double x) {
+        return Math.log(x) / Math.log(2);
+    }
+
+    public double normalizedEntropy(ArrayList<Integer> counts) {
+        double smoothing = lambda / Math.sqrt(this.support);
+        double entropy = 0.0;
+        double Z = 0.0;
+        for(int c : counts) {
+            Z += c + smoothing;
+        }
+        for(int c : counts) {
+            double p = (c + smoothing) / Z;
+            if(p > 0) {
+                entropy -= p * this.log2(p);
+            }
+        }
+
+        return entropy / this.log2(4.0);
+    }
 
     public MyTree(String pattern, String action) {
         this.patternCounts = new ArrayList<>();
@@ -44,29 +66,52 @@ public class MyTree {
 
       ArrayList<Double>precisionScores = new ArrayList<>();
       ArrayList<Double>compactnessScores = new ArrayList<>();
+      ArrayList<Double>entropies = new ArrayList<>();
+      ArrayList<Integer>predictionCounts = new ArrayList<>();
       int lengthSum = 0;
       int precisionSum = 0;
       for(int i = 0; i < 10; i++) {
           String shortestPattern = shortestPatterns.get(i);
           int shortestLen = shortestPattern.length();
+          predictionCounts.add(shortestLen);
           precisionSum += 4 - shortestLen;
           lengthSum += shortestLen;
           compactnessScores.add((40.0 - lengthSum) / 40.0);
           precisionScores.add(precisionSum / 40.0);
-        }
-      int bestIdx = 0;
-      double bestScore = 0.0;
-      ArrayList<Double> jointScores = new ArrayList<>();
-      for(int i = 0; i < 10; i++) {
-          double jointScore = (compactnessScores.get(i) + precisionScores.get(i)) / 2.0;
-          if(jointScore >= bestScore) {
-              bestIdx = i;
-              bestScore = jointScore;
+          entropies.add(this.normalizedEntropy(this.patternCounts.get(i)));
+      }
+
+      int bestEntropyIdx = -1;
+      for(int e = 0; e < entropies.size(); e++) {
+          int predictedCount = predictionCounts.get(e);
+          double threshold;
+          if(predictedCount == 1) {
+              threshold = 0.4;
+          } else if(predictedCount == 2) {
+              threshold = 0.6;
+          } else if(predictedCount == 3) {
+              threshold = 0.8;
+          } else {
+              threshold = 0.0;
+          }
+          if(entropies.get(e) <= threshold) {
+              bestEntropyIdx = e;
           }
       }
 
+      int bestPrecisionIdx = -1;
+      double bestScore = 0.0;
+      for(int i = 0; i < 10; i++) {
+          double jointScore = (compactnessScores.get(i) + precisionScores.get(i)) / 2.0;
+          if(jointScore >= bestScore) {
+              bestPrecisionIdx = i;
+              bestScore = jointScore;
+          }
+      }
+      
+      int bestIdx = bestEntropyIdx > -1 ? bestEntropyIdx : bestPrecisionIdx;
       String bestPattern = "";
-      for(int i=0; i<= bestIdx; i++) {
+      for(int i=0; i <= bestIdx; i++) {
           bestPattern += shortestPatterns.get(i);
           if(i < bestIdx) {
               bestPattern += ";";
