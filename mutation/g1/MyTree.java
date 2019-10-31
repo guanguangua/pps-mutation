@@ -7,10 +7,17 @@ import javafx.util.Pair;
 
 
 public class MyTree {
+    // Entropy Hyperparameters
+    public final boolean useEntropy = true;
+    public final int supportBeforeEntropy = 20;
+    public final double lambda = 1.0;
+    public final double singleCountEntropyThreshold = 0.4;
+    public final double doubleCountEntropyThreshold = 0.6;
+    public final double tripleCountEntropyThreshold = 0.8;
+
     private final ArrayList<Character> bases = new ArrayList<Character>(Arrays.asList('a', 'c', 'g', 't'));
     public String action;
     public int support;
-    public final double lambda = 1.0;
     public ArrayList<ArrayList<Integer>> patternCounts;
 
     public double log2(double x) {
@@ -86,11 +93,11 @@ public class MyTree {
           int predictedCount = predictionCounts.get(e);
           double threshold;
           if(predictedCount == 1) {
-              threshold = 0.4;
+              threshold = singleCountEntropyThreshold;
           } else if(predictedCount == 2) {
-              threshold = 0.6;
+              threshold = doubleCountEntropyThreshold;
           } else if(predictedCount == 3) {
-              threshold = 0.8;
+              threshold = tripleCountEntropyThreshold;
           } else {
               threshold = 0.0;
           }
@@ -108,8 +115,12 @@ public class MyTree {
               bestScore = jointScore;
           }
       }
-      
-      int bestIdx = bestEntropyIdx > -1 ? bestEntropyIdx : bestPrecisionIdx;
+
+      boolean chooseEntropyIdx = bestEntropyIdx > -1 && this.support > supportBeforeEntropy && useEntropy;
+      if(chooseEntropyIdx) {
+          System.out.println("Using Entropy!");
+      }
+      int bestIdx = chooseEntropyIdx ? bestEntropyIdx : bestPrecisionIdx;
       String bestPattern = "";
       for(int i=0; i <= bestIdx; i++) {
           bestPattern += shortestPatterns.get(i);

@@ -117,7 +117,7 @@ public class Player extends mutation.sim.Player {
         String bestPattern = "";
         String bestAction = "";
 
-        for (int iter = 0; iter < 10; iter++) {
+        for (int iter = 0; iter < 100; iter++) {
             String genome = randomString();
             String mutated = console.Mutate(genome);
 
