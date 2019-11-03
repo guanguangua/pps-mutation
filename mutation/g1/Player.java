@@ -4,7 +4,6 @@ import mutation.sim.Console;
 import mutation.sim.Mutagen;
 
 import java.lang.Math;
-import java.lang.reflect.Array;
 import java.util.*;
 
 import javafx.util.Pair;
@@ -23,6 +22,48 @@ public class Player extends mutation.sim.Player {
         for (int i = 0; i < 1000; ++ i)
             result += pool[Math.abs(random.nextInt() % 4)];
         return result;
+    }
+
+    public void mergeTrees(HashMap<String, MyTree> trees) {
+        // Merge tree a into tree b iff a --> <x>;(acgt)@<y> and b --> <x>@<y>(acgt)
+        ArrayList<String>actionsToRemove = new ArrayList<String>();
+
+        for(Map.Entry<String, MyTree> entry : trees.entrySet()) {
+            String action = entry.getKey();
+            MyTree t = entry.getValue();
+            Pair<String, Double> p = t.computeBestPattern(new HashSet<String>());
+            for(Map.Entry<String, MyTree> otherEntry : trees.entrySet()) {
+                String otherAction = otherEntry.getKey();
+                MyTree otherT = otherEntry.getValue();
+
+                if(otherAction.equals(action)) {
+                    continue;
+                }
+
+                int alignIdx = otherAction.indexOf(action);
+                boolean ambiguousAlignIdx = otherAction.length() > 1 && otherAction.substring(1).contains(action);
+                if(alignIdx == 0 && ! ambiguousAlignIdx) {
+                    boolean isValid = true;
+                    for(int i = action.length(); i < otherAction.length(); i++) {
+                        isValid = t.matchesCharAtIdx(otherAction.charAt(i), i);
+                        if(!isValid) {
+                            break;
+                        }
+                    }
+
+                    if(isValid) {
+                        // merge entry into otherEntry
+                        System.out.println("Merging " + action + " into " + otherAction);
+                        otherT.mergeTree(t, alignIdx);
+                        actionsToRemove.add(action);
+                    }
+                }
+            }
+        }
+
+        for(String action: actionsToRemove) {
+            trees.remove(action);
+        }
     }
 
     private String defaultString() {
@@ -104,9 +145,45 @@ public class Player extends mutation.sim.Player {
         return action;
     }
 
-    public Mutagen generateGuess(String p, String a) {
+    public boolean consumes(Pair<String, String>p1, Pair<String, String> p2) {
+        /*
+        p1 consumes p2 if of the form: p1= a;<x>@a<y> and p2=<x>@<y>
+         */
+
+        List<String> pp1 = Arrays.asList(p1.getKey().split(";"));
+        String pa1 = p1.getValue();
+
+        List<String> pp2 = Arrays.asList(p2.getKey().split(";"));
+        String pa2 = p2.getValue();
+
+        int alignIdx = pa1.indexOf(pa2);
+        if(alignIdx > 0) {
+            for(int i = 0; i < alignIdx; i++) {
+                if(i >= pp1.size() || !Character.toString(pa1.charAt(i)).equals(pp1.get(i))) {
+                    return false;
+                }
+            }
+
+            for(int i = alignIdx; i < pp1.size(); i++) {
+                String base = pp1.get(i);
+                if(i - alignIdx < pp2.size()) {
+                    String compare = pp2.get(i - alignIdx);
+                    if(! base.contains(compare)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public Mutagen generateGuess(ArrayList<Pair<String, String>>guesses) {
         Mutagen m = new Mutagen();
-        m.add(p, a);
+        for(Pair p : guesses) {
+            m.add((String) p.getKey(), (String) p.getValue());
+        }
         return m;
     }
 
@@ -115,13 +192,16 @@ public class Player extends mutation.sim.Player {
         HashMap<String,MyTree>trees = new HashMap<>();
 
         boolean isCorrect;
-        String bestPattern = "";
-        String bestAction = "";
+        ArrayList<Pair<String, String>>guesses = new ArrayList<>();
         Set<String>incorrectGuesses = new HashSet<String>();
+
+        int numMutations = 0;
 
         for (int iter = 0; iter < 100; iter++) {
             String genome = randomString();
             String mutated = console.Mutate(genome);
+
+            numMutations += m;
 
             ArrayList<ArrayList<Integer>> possibleWindows = this.getPossibleWindows(genome, mutated, m);
             if(possibleWindows.size() == 0) {
@@ -144,27 +224,51 @@ public class Player extends mutation.sim.Player {
                 }
             }
 
+            this.mergeTrees(trees);
             int maxSupport = 0;
             for(MyTree t: trees.values()) {
                 maxSupport = Math.max(t.support, maxSupport);
             }
 
-            double bestScore = -1;
+            int supportThreshold = (int) Math.round(maxSupport * 0.7);
+            guesses = new ArrayList<>();
+
+            ArrayList<String> actionCandidates = new ArrayList<>();
+            ArrayList<String> patternCandidates = new ArrayList<>();
+
             for(MyTree t: trees.values()) {
-                if(t.support == maxSupport) {
+                if(t.support >= supportThreshold) {
                     Pair<String, Double> p = t.computeBestPattern(incorrectGuesses);
                     String pattern = p.getKey();
-                    double score = p.getValue();
-                    if(score >= bestScore) {
-                        bestScore = score;
-                        bestPattern = pattern;
-                        bestAction = t.action;
-                    }
+                    actionCandidates.add(t.action);
+                    patternCandidates.add(pattern);
                 }
             }
 
-            String resultStr = bestPattern + "@" + bestAction;
-            isCorrect = console.Guess(this.generateGuess(bestPattern, bestAction));
+            for(int cIdx = 0; cIdx < actionCandidates.size(); cIdx++) {
+                boolean isSubset = false;
+                for(int otherIdx = 0; otherIdx < actionCandidates.size(); otherIdx++) {
+                    Pair<String, String> p1 = new Pair<>(patternCandidates.get(otherIdx), actionCandidates.get(otherIdx));
+                    Pair<String, String> p2 = new Pair<>(patternCandidates.get(cIdx), actionCandidates.get(cIdx));
+                    if(otherIdx != cIdx && this.consumes(p1, p2)) {
+                        isSubset = true;
+                        break;
+                    }
+                }
+                if(!isSubset) {
+                    guesses.add(new Pair(patternCandidates.get(cIdx), actionCandidates.get(cIdx)));
+                }
+            }
+
+            String resultStr = "\n";
+            for(int gIdx=0; gIdx < guesses.size(); gIdx++) {
+                resultStr += guesses.get(gIdx).getKey() + "@" + guesses.get(gIdx).getValue();
+                if(gIdx < guesses.size() - 1) {
+                    resultStr += "\n";
+                }
+            }
+
+            isCorrect = console.Guess(this.generateGuess(guesses));
             if(isCorrect) {
                 System.out.println("Correct: " + resultStr);
                 break;
@@ -174,6 +278,6 @@ public class Player extends mutation.sim.Player {
             }
         }
 
-        return this.generateGuess(bestPattern, bestAction);
+        return this.generateGuess(guesses);
     }
 }

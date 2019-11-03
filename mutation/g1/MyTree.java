@@ -1,6 +1,5 @@
 package mutation.g1;
 
-import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Set;
@@ -75,7 +74,7 @@ public class MyTree {
           String posString = "";
           for(int charIdx = 0; charIdx < 4; charIdx++) {
               int charCount = charCounts.get(charIdx);
-              if(charCount / (float) this.support > 0.1) {
+              if(charCount >= 0.2 * this.support) {
                   posString += this.bases.get(charIdx);
               }
           }
@@ -96,7 +95,7 @@ public class MyTree {
           precisionSum += 4 - shortestLen;
           lengthSum += shortestLen;
           compactnessScores.add((40.0 - lengthSum) / 40.0);
-          precisionScores.add(precisionSum / 40.0);
+          precisionScores.add(precisionSum / (4.0 * (i + 1)));
           entropies.add(this.normalizedEntropy(this.patternCounts.get(i)));
       }
 
@@ -118,9 +117,6 @@ public class MyTree {
       }
 
       boolean chooseEntropyIdx = bestEntropyIdx > -1 && this.support > supportBeforeEntropy && useEntropy;
-      if(chooseEntropyIdx) {
-          System.out.println("Using Entropy!");
-      }
       int bestIdx = chooseEntropyIdx ? bestEntropyIdx : bestPrecisionIdx;
       int altIdx = chooseEntropyIdx ? bestPrecisionIdx : bestEntropyIdx;
       if(altIdx == -1) {
@@ -133,6 +129,36 @@ public class MyTree {
       }
 
       return new Pair(bestPattern, bestScore);
+    }
+
+    public void mergeTree(MyTree t, int alignIdx) {
+        this.support += t.support;
+        for(int positionIdx = alignIdx; positionIdx < 10; positionIdx++) {
+            for(int charIdx = 0; charIdx < 4; charIdx++) {
+                int newValue = (this.patternCounts.get(positionIdx).get(charIdx) +
+                        t.patternCounts.get(positionIdx - alignIdx).get(charIdx));
+                this.patternCounts.get(positionIdx).set(charIdx, newValue);
+            }
+        }
+    }
+
+    public boolean matchesCharAtIdx(Character c, int posIdx) {
+        int charIdx = this.bases.indexOf(c);
+
+        for(int i = 0; i < 4; i++) {
+            int count = this.patternCounts.get(posIdx).get(i);
+            if(i == charIdx) {
+                if(count == 0) {
+                    return false;
+                }
+            } else {
+                if(count > 0) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     public void addPattern(String newPattern) {
