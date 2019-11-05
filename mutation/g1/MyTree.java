@@ -4,8 +4,6 @@ import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Set;
 
-import javafx.util.Pair;
-
 
 public class MyTree {
     // Entropy Hyperparameters
@@ -18,6 +16,7 @@ public class MyTree {
     public String action;
     public int support;
     public ArrayList<ArrayList<Integer>> patternCounts;
+    public ArrayList<ArrayList<Integer>> actionIndexCounts;
 
     public double log2(double x) {
         return Math.log(x) / Math.log(2);
@@ -50,8 +49,61 @@ public class MyTree {
             this.patternCounts.add(charCounts);
         }
 
+        this.actionIndexCounts = new ArrayList<>();
+        for(int i = 0; i < action.length(); i++) {
+            ArrayList<Integer>ac = new ArrayList<>();
+            for(int j = 0; j < 10; j++) {
+                ac.add(0);
+            }
+            this.actionIndexCounts.add(ac);
+        }
+
         this.action = action;
         this.addPattern(pattern);
+        this.addActionIndices(pattern);
+    }
+
+    public String proposeAlphaNumericAction() {
+        String newAction = "";
+        for(int i=0; i < this.action.length(); i++) {
+            int maxActionIdx = -1;
+            int maxCount = -1;
+            for(int actionIdx=0; actionIdx < 10; actionIdx++) {
+                int count = this.actionIndexCounts.get(i).get(actionIdx);
+                if(count >= maxCount) {
+                    maxActionIdx = actionIdx;
+                    maxCount = count;
+                }
+            }
+
+            if(maxCount >= Math.max(2.0, 0.8 * this.support)) {
+                newAction += Integer.toString(maxActionIdx);
+            } else {
+                newAction += this.action.charAt(i);
+            }
+        }
+
+        return newAction;
+    }
+
+    public void addActionIndices(String pattern) {
+        ArrayList<ArrayList<Integer>> charIdxs = new ArrayList<>();
+        for(int i = 0; i < 4; i++) {
+            charIdxs.add(new ArrayList<>());
+        }
+        for(int posIdx = 0; posIdx < pattern.length(); posIdx++) {
+            char c = pattern.charAt(posIdx);
+            charIdxs.get(this.bases.indexOf(c)).add(posIdx);
+        }
+
+        for(int actionIdx = 0; actionIdx < this.action.length(); actionIdx++) {
+            int actionCharIdx = this.bases.indexOf(this.action.charAt(actionIdx));
+            ArrayList<Integer>indicesToAdd = charIdxs.get(actionCharIdx);
+            for(int idx : indicesToAdd) {
+                int currCount = this.actionIndexCounts.get(actionIdx).get(idx);
+                this.actionIndexCounts.get(actionIdx).set(idx, currCount + 1);
+            }
+        }
     }
 
     public String generatePattern(ArrayList<String>shortestPatterns, int endIdx) {
@@ -66,7 +118,7 @@ public class MyTree {
         return pattern;
     }
 
-    public Pair<String, Double> computeBestPattern(Set<String> missedGuesses) {
+    public String computeBestPattern(Set<String> missedGuesses) {
       ArrayList<String> shortestPatterns = new ArrayList<>();
 
       for(int positionIdx = 0; positionIdx < 10; positionIdx++) {
@@ -128,7 +180,7 @@ public class MyTree {
           bestPattern = this.generatePattern(shortestPatterns, altIdx);
       }
 
-      return new Pair(bestPattern, bestScore);
+      return bestPattern;
     }
 
     public void mergeTree(MyTree t, int alignIdx) {
